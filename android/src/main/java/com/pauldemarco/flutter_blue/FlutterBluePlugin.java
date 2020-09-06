@@ -29,6 +29,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.ParcelUuid;
 import android.util.Log;
 
@@ -181,6 +183,13 @@ public class FlutterBluePlugin implements FlutterPlugin, ActivityAware, MethodCa
         application = null;
     }
 
+    private Context getContext() {
+        if(activity != null) {
+            return activity;
+        }
+        return context;
+    }
+
 
     @Override
     public void onMethodCall(MethodCall call, Result result) {
@@ -240,16 +249,18 @@ public class FlutterBluePlugin implements FlutterPlugin, ActivityAware, MethodCa
 
             case "startScan":
             {
-                if (ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION)
+                if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION)
                         != PackageManager.PERMISSION_GRANTED) {
-                    ActivityCompat.requestPermissions(
-                            activity,
-                            new String[] {
-                                    Manifest.permission.ACCESS_FINE_LOCATION
-                            },
-                            REQUEST_FINE_LOCATION_PERMISSIONS);
-                    pendingCall = call;
-                    pendingResult = result;
+                    if(activity != null) {
+                        ActivityCompat.requestPermissions(
+                                activity,
+                                new String[]{
+                                        Manifest.permission.ACCESS_FINE_LOCATION
+                                },
+                                REQUEST_FINE_LOCATION_PERMISSIONS);
+                        pendingCall = call;
+                        pendingResult = result;
+                    }
                     break;
                 }
                 startScan(call, result);
@@ -308,9 +319,9 @@ public class FlutterBluePlugin implements FlutterPlugin, ActivityAware, MethodCa
                 // New request, connect and add gattServer to Map
                 BluetoothGatt gattServer;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    gattServer = device.connectGatt(activity, options.getAndroidAutoConnect(), mGattCallback, BluetoothDevice.TRANSPORT_LE);
+                    gattServer = device.connectGatt(getContext(), options.getAndroidAutoConnect(), mGattCallback, BluetoothDevice.TRANSPORT_LE);
                 } else {
-                    gattServer = device.connectGatt(activity, options.getAndroidAutoConnect(), mGattCallback);
+                    gattServer = device.connectGatt(getContext(), options.getAndroidAutoConnect(), mGattCallback);
                 }
                 mDevices.put(deviceId, new BluetoothDeviceCache(gattServer));
                 result.success(null);
@@ -728,13 +739,13 @@ public class FlutterBluePlugin implements FlutterPlugin, ActivityAware, MethodCa
         public void onListen(Object o, EventChannel.EventSink eventSink) {
             sink = eventSink;
             IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
-            activity.registerReceiver(mReceiver, filter);
+            getContext().registerReceiver(mReceiver, filter);
         }
 
         @Override
         public void onCancel(Object o) {
             sink = null;
-            activity.unregisterReceiver(mReceiver);
+            getContext().unregisterReceiver(mReceiver);
         }
     };
 
@@ -997,13 +1008,22 @@ public class FlutterBluePlugin implements FlutterPlugin, ActivityAware, MethodCa
 
     private void invokeMethodUIThread(final String name, final byte[] byteArray)
     {
-        activity.runOnUiThread(
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        channel.invokeMethod(name, byteArray);
-                    }
-                });
+        if(activity == null) {
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                @Override
+                public void run() {
+                    channel.invokeMethod(name, byteArray);
+                }
+            });
+        } else {
+            activity.runOnUiThread(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            channel.invokeMethod(name, byteArray);
+                        }
+                    });
+        }
     }
 
     // BluetoothDeviceCache contains any other cached information not stored in Android Bluetooth API
