@@ -187,7 +187,7 @@ public class FlutterBluePlugin implements FlutterPlugin, ActivityAware, MethodCa
         if(activity != null) {
             return activity;
         }
-        return context;
+        return application;
     }
 
 
