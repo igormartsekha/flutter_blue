@@ -36,11 +36,11 @@ class FlutterBlue {
   /// Checks if Bluetooth functionality is turned on
   Future<bool> get isOn => _channel.invokeMethod('isOn').then<bool>((d) => d);
 
-  BehaviorSubject<bool> _isScanning = BehaviorSubject.seeded(false);
-  Stream<bool> get isScanning => _isScanning.stream;
+  BehaviorSubject<bool> isScanningInternal = BehaviorSubject.seeded(false);
+  Stream<bool> get isScanning => isScanningInternal.stream;
 
-  BehaviorSubject<List<ScanResult>> _scanResults = BehaviorSubject.seeded([]);
-  Stream<List<ScanResult>> get scanResults => _scanResults.stream;
+  BehaviorSubject<List<ScanResult>> scanResultsInternal = BehaviorSubject.seeded([]);
+  Stream<List<ScanResult>> get scanResults => scanResultsInternal.stream;
 
   PublishSubject _stopScanPill = new PublishSubject();
 
@@ -87,12 +87,12 @@ class FlutterBlue {
       ..allowDuplicates = allowDuplicates
       ..serviceUuids.addAll(withServices.map((g) => g.toString()).toList());
 
-    if (_isScanning.value == true) {
+    if (isScanningInternal.value == true) {
       throw Exception('Another scan is already in progress.');
     }
 
     // Emit to isScanning
-    _isScanning.add(true);
+    isScanningInternal.add(true);
 
     final killStreams = <Stream>[];
     killStreams.add(_stopScanPill);
@@ -101,14 +101,14 @@ class FlutterBlue {
     }
 
     // Clear scan results list
-    _scanResults.add(<ScanResult>[]);
+    scanResultsInternal.add(<ScanResult>[]);
 
     try {
       await _channel.invokeMethod('startScan', settings.writeToBuffer());
     } catch (e) {
       print('Error starting scan.');
       _stopScanPill.add(null);
-      _isScanning.add(false);
+      isScanningInternal.add(false);
       throw e;
     }
 
@@ -120,14 +120,14 @@ class FlutterBlue {
         .map((buffer) => new protos.ScanResult.fromBuffer(buffer))
         .map((p) {
       final result = new ScanResult.fromProto(p);
-      final list = _scanResults.value;
+      final list = scanResultsInternal.value;
       int index = list.indexOf(result);
       if (index != -1) {
         list[index] = result;
       } else {
         list.add(result);
       }
-      _scanResults.add(list);
+      scanResultsInternal.add(list);
       return result;
     });
   }
@@ -146,14 +146,14 @@ class FlutterBlue {
             timeout: timeout,
             allowDuplicates: allowDuplicates)
         .drain();
-    return _scanResults.value;
+    return scanResultsInternal.value;
   }
 
   /// Stops a scan for Bluetooth Low Energy devices
   Future stopScan() async {
     await _channel.invokeMethod('stopScan');
     _stopScanPill.add(null);
-    _isScanning.add(false);
+    isScanningInternal.add(false);
   }
 
   /// The list of connected peripherals can include those that are connected
